@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌄</text></svg>">
+<title>Фото в ASCII</title>
+<style>
+  body{margin:0;background:#0b0b0e;color:#f2f2f4;font-family:Segoe UI,Arial,sans-serif}
+  header{padding:12px 18px;background:#141419;border-bottom:1px solid #26262c;font-size:16px}
+  main{padding:14px 18px;display:flex;flex-direction:column;gap:12px;max-width:1100px}
+  #dropEl{border:2px dashed #44444c;border-radius:10px;padding:26px;text-align:center;color:#999;cursor:pointer}
+  #dropEl.over{border-color:#ffd166;color:#ffd166}
+  #ctrlEl{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:13px;color:#bbb}
+  #ctrlEl label{display:flex;gap:8px;align-items:center}
+  button{background:#ffd166;border:0;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px}
+  button.ghost{background:#26262c;color:#fff}
+  #outEl{background:#000;border:1px solid #26262c;border-radius:8px;padding:12px;overflow:auto;max-height:62vh;font-family:Consolas,monospace;font-size:7px;line-height:7px;letter-spacing:0;white-space:pre}
+</style>
+</head>
+<body>
+<header>Фото → ASCII-арт</header>
+<main>
+  <div id="dropEl">Перетащи сюда фото или кликни для выбора<input type="file" id="fileInput" accept="image/*" hidden></div>
+  <div id="ctrlEl">
+    <label>Ширина <input type="range" id="wInput" min="40" max="220" value="120"><b id="wVal">120</b></label>
+    <label>Контраст <input type="range" id="cInput" min="50" max="200" value="110"><b id="cVal">110</b></label>
+    <label><input type="checkbox" id="colorInput" checked> Цвет</label>
+    <label><input type="checkbox" id="invInput"> Инверсия</label>
+    <button id="copyBtn" class="ghost">Копировать текст</button>
+    <button id="saveBtn" class="ghost">Скачать .txt</button>
+  </div>
+  <div id="outEl">здесь появится картина из символов…</div>
+</main>
+<script>
+(function(){
+  var dropEl = document.getElementById("dropEl");
+  var fileInput = document.getElementById("fileInput");
+  var wInput = document.getElementById("wInput");
+  var cInput = document.getElementById("cInput");
+  var colorInput = document.getElementById("colorInput");
+  var invInput = document.getElementById("invInput");
+  var outEl = document.getElementById("outEl");
+  var img = new Image();
+  var CHARS = "@%#*+=-:. ";
+  var cv = document.createElement("canvas");
+  function convert(){
+    if (!img.naturalWidth) return;
+    var cols = +wInput.value;
+    var contrast = +cInput.value / 100;
+    var ratio = img.naturalHeight / img.naturalWidth;
+    var rows = Math.round(cols * ratio * 0.55);
+    cv.width = cols;
+    cv.height = rows;
+    var ctx = cv.getContext("2d", {willReadFrequently: true});
+    ctx.drawImage(img, 0, 0, cols, rows);
+    var px = ctx.getImageData(0, 0, cols, rows).data;
+    var html = "";
+    var text = "";
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var i = (y * cols + x) * 4;
+        var r = px[i], g = px[i + 1], b = px[i + 2];
+        var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        lum = Math.min(1, Math.max(0, (lum - 0.5) * contrast + 0.5));
+        if (invInput.checked) lum = 1 - lum;
+        var ch = CHARS[Math.min(CHARS.length - 1, Math.floor(lum * CHARS.length))];
+        text += ch;
+        if (colorInput.checked) {
+          html += "<span style=\"color:rgb(" + r + "," + g + "," + b + ")\">" + (ch === " " ? "&nbsp;" : ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch) + "</span>";
+        } else {
+          html += ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch;
+        }
+      }
+      text += "\n";
+      html += "\n";
+    }
+    outEl.innerHTML = html;
+    outEl.dataset.text = text;
+  }
+  function loadFile(f){
+    if (!f || f.type.indexOf("image/") !== 0) return;
+    var url = URL.createObjectURL(f);
+    img.onload = function(){
+      URL.revokeObjectURL(url);
+      convert();
+    };
+    img.src = url;
+  }
+  dropEl.onclick = function(){ fileInput.click(); };
+  fileInput.onchange = function(){ loadFile(fileInput.files[0]); };
+  dropEl.ondragover = function(e){ e.preventDefault(); dropEl.classList.add("over"); };
+  dropEl.ondragleave = function(){ dropEl.classList.remove("over"); };
+  dropEl.ondrop = function(e){ e.preventDefault(); dropEl.classList.remove("over"); loadFile(e.dataTransfer.files[0]); };
+  wInput.oninput = function(){ document.getElementById("wVal").textContent = wInput.value; convert(); };
+  cInput.oninput = function(){ document.getElementById("cVal").textContent = cInput.value; convert(); };
+  colorInput.onchange = convert;
+  invInput.onchange = convert;
+  document.getElementById("copyBtn").onclick = async function(){
+    var t = outEl.dataset.text || "";
+    if (!t) return;
+    try {
+      await navigator.clipboard.writeText(t);
+      this.textContent = "Скопировано!";
+    } catch (e) {
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      this.textContent = "Скопировано!";
+    }
+    var btn = this;
+    setTimeout(function(){ btn.textContent = "Копировать текст"; }, 1500);
+  };
+  document.getElementById("saveBtn").onclick = function(){
+    var t = outEl.dataset.text || "";
+    if (!t) return;
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([t], {type: "text/plain;charset=utf-8"}));
+    a.download = "ascii-art.txt";
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+  };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📝</text></svg>">
+<title>Фото в base64</title>
+<style>
+  body{margin:0;background:#0b0b0e;color:#f2f2f4;font-family:Segoe UI,Arial,sans-serif}
+  header{padding:12px 18px;background:#141419;border-bottom:1px solid #26262c;font-size:16px}
+  main{padding:14px 18px;display:flex;flex-direction:column;gap:12px;max-width:1000px}
+  #dropEl{border:2px dashed #44444c;border-radius:10px;padding:26px;text-align:center;color:#999;cursor:pointer}
+  #dropEl.over{border-color:#ffd166;color:#ffd166}
+  #ctrlEl{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:13px;color:#bbb}
+  #ctrlEl label{display:flex;gap:8px;align-items:center}
+  button{background:#ffd166;border:0;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px}
+  button.ghost{background:#26262c;color:#fff;font-size:12px;padding:5px 10px}
+  .card{background:#141419;border:1px solid #26262c;border-radius:8px;padding:10px;display:flex;gap:12px;align-items:center}
+  .card img{width:90px;height:90px;object-fit:cover;border-radius:6px;flex-shrink:0}
+  .card .info{font-size:12px;color:#bbb;flex:1;word-break:break-all}
+  .card .info b{color:#fff}
+  textarea{width:100%;height:64px;background:#000;color:#8b949e;border:1px solid #26262c;border-radius:6px;font-size:11px;font-family:Consolas,monospace;box-sizing:border-box}
+</style>
+</head>
+<body>
+<header>Фото → base64 для вставки в HTML</header>
+<main>
+  <div id="dropEl">Перетащи фото (можно несколько) или кликни для выбора<input type="file" id="fileInput" accept="image/*" multiple hidden></div>
+  <div id="ctrlEl">
+    <label>Макс. сторона <input type="range" id="sizeInput" min="320" max="1920" step="80" value="1280"><b id="sizeVal">1280</b></label>
+    <label>Качество JPG <input type="range" id="qInput" min="40" max="95" value="82"><b id="qVal">82</b></label>
+    <button id="dlBtn">Скачать галерею одним файлом</button>
+  </div>
+  <div id="listEl" style="display:flex;flex-direction:column;gap:10px"></div>
+</main>
+<script>
+(function(){
+  var dropEl = document.getElementById("dropEl");
+  var fileInput = document.getElementById("fileInput");
+  var listEl = document.getElementById("listEl");
+  var items = [];
+  var pending = [];
+  function fmt(n){
+    if (n > 1048576) return (n / 1048576).toFixed(1) + " МБ";
+    return Math.round(n / 1024) + " КБ";
+  }
+  function process(f){
+    if (!f || f.type.indexOf("image/") !== 0) return;
+    for (var d = 0; d < pending.length; d++) {
+      if (pending[d].name === f.name && pending[d].size === f.size) return;
+    }
+    pending.push(f);
+    renderFile(f);
+  }
+  function renderFile(f){
+    var url = URL.createObjectURL(f);
+    var img = new Image();
+    img.onload = function(){
+      URL.revokeObjectURL(url);
+      var maxSide = +document.getElementById("sizeInput").value;
+      var q = +document.getElementById("qInput").value / 100;
+      var w = img.naturalWidth;
+      var h = img.naturalHeight;
+      var k = Math.min(1, maxSide / Math.max(w, h));
+      var cw = Math.round(w * k);
+      var ch = Math.round(h * k);
+      var cv = document.createElement("canvas");
+      cv.width = cw;
+      cv.height = ch;
+      cv.getContext("2d").drawImage(img, 0, 0, cw, ch);
+      var dataUrl = cv.toDataURL("image/jpeg", q);
+      addCard(f.name, f.size, dataUrl, cw, ch);
+    };
+    img.src = url;
+  }
+  function addCard(name, origSize, dataUrl, w, h){
+    var item = {name: name, dataUrl: dataUrl};
+    items.push(item);
+    var card = document.createElement("div");
+    card.className = "card";
+    var tag = "<img src=\"" + dataUrl + "\" alt=\"" + name + "\">";
+    card.innerHTML = "";
+    var im = document.createElement("img");
+    im.src = dataUrl;
+    var info = document.createElement("div");
+    info.className = "info";
+    info.innerHTML = "";
+    var b = document.createElement("b");
+    b.textContent = name + " (" + w + "×" + h + ")";
+    info.appendChild(b);
+    info.appendChild(document.createElement("br"));
+    info.appendChild(document.createTextNode("было " + fmt(origSize) + " → вшито " + fmt(dataUrl.length)));
+    var ta = document.createElement("textarea");
+    ta.readOnly = true;
+    ta.value = tag;
+    ta.onclick = function(){ ta.select(); };
+    info.appendChild(ta);
+    var btn = document.createElement("button");
+    btn.className = "ghost";
+    btn.textContent = "Копировать тег";
+    btn.onclick = async function(){
+      try {
+        await navigator.clipboard.writeText(tag);
+      } catch (e) {
+        ta.select();
+        document.execCommand("copy");
+      }
+      btn.textContent = "Скопировано!";
+      setTimeout(function(){ btn.textContent = "Копировать тег"; }, 1500);
+    };
+    card.appendChild(im);
+    card.appendChild(info);
+    card.appendChild(btn);
+    listEl.insertBefore(card, listEl.firstChild);
+  }
+  function reprocess(){
+    items = [];
+    listEl.innerHTML = "";
+    for (var i = 0; i < pending.length; i++) renderFile(pending[i]);
+  }
+  dropEl.onclick = function(){ fileInput.click(); };
+  fileInput.onchange = function(){
+    for (var i = 0; i < fileInput.files.length; i++) process(fileInput.files[i]);
+    fileInput.value = "";
+  };
+  dropEl.ondragover = function(e){ e.preventDefault(); dropEl.classList.add("over"); };
+  dropEl.ondragleave = function(){ dropEl.classList.remove("over"); };
+  dropEl.ondrop = function(e){
+    e.preventDefault();
+    dropEl.classList.remove("over");
+    for (var i = 0; i < e.dataTransfer.files.length; i++) process(e.dataTransfer.files[i]);
+  };
+  document.getElementById("sizeInput").oninput = function(){
+    document.getElementById("sizeVal").textContent = this.value;
+    reprocess();
+  };
+  document.getElementById("qInput").oninput = function(){
+    document.getElementById("qVal").textContent = this.value;
+    reprocess();
+  };
+  document.getElementById("dlBtn").onclick = function(){
+    if (!items.length) return;
+    var h = "<!DOCTYPE html>\n<html lang=\"ru\">\n<head>\n<meta charset=\"utf-8\">\n<title>Галерея</title>\n<style>body{margin:0;background:#111;display:flex;flex-wrap:wrap;gap:8px;padding:8px}img{max-width:100%;height:auto}</style>\n</head>\n<body>\n";
+    for (var i = 0; i < items.length; i++) {
+      h += "<img src=\"" + items[i].dataUrl + "\" alt=\"" + items[i].name + "\">\n";
+    }
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([h], {type: "text/html;charset=utf-8"}));
+    a.download = "gallery.html";
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+  };
+})();
+</script>
+</body>
+</html>
