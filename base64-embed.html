@@ -29,6 +29,11 @@
   <div id="ctrlEl">
     <label>Макс. сторона <input type="range" id="sizeInput" min="320" max="1920" step="80" value="1280"><b id="sizeVal">1280</b></label>
     <label>Качество JPG <input type="range" id="qInput" min="40" max="95" value="82"><b id="qVal">82</b></label>
+    <label>Формат <select id="fmtSel">
+      <option value="img">&lt;img&gt; тег</option>
+      <option value="src">слайд src-объект</option>
+      <option value="srcph">слайд src+ph</option>
+    </select></label>
     <button id="dlBtn">Скачать галерею одним файлом</button>
   </div>
   <div id="listEl" style="display:flex;flex-direction:column;gap:10px"></div>
@@ -73,13 +78,17 @@
     };
     img.src = url;
   }
+  function fmtText(d){
+    var f = document.getElementById("fmtSel").value;
+    if (f === "src") return '{src:"' + d + '"}';
+    if (f === "srcph") return '{src:"' + d + '",\n ph:"' + d + '"}';
+    return '<img src="' + d + '" alt="">';
+  }
   function addCard(name, origSize, dataUrl, w, h){
-    var item = {name: name, dataUrl: dataUrl};
+    var item = {name: name, dataUrl: dataUrl, ta: null};
     items.push(item);
     var card = document.createElement("div");
     card.className = "card";
-    var tag = "<img src=\"" + dataUrl + "\" alt=\"" + name + "\">";
-    card.innerHTML = "";
     var im = document.createElement("img");
     im.src = dataUrl;
     var info = document.createElement("div");
@@ -92,21 +101,22 @@
     info.appendChild(document.createTextNode("было " + fmt(origSize) + " → вшито " + fmt(dataUrl.length)));
     var ta = document.createElement("textarea");
     ta.readOnly = true;
-    ta.value = tag;
+    ta.value = fmtText(dataUrl);
+    item.ta = ta;
     ta.onclick = function(){ ta.select(); };
     info.appendChild(ta);
     var btn = document.createElement("button");
     btn.className = "ghost";
-    btn.textContent = "Копировать тег";
+    btn.textContent = "Копировать";
     btn.onclick = async function(){
       try {
-        await navigator.clipboard.writeText(tag);
+        await navigator.clipboard.writeText(ta.value);
       } catch (e) {
         ta.select();
         document.execCommand("copy");
       }
       btn.textContent = "Скопировано!";
-      setTimeout(function(){ btn.textContent = "Копировать тег"; }, 1500);
+      setTimeout(function(){ btn.textContent = "Копировать"; }, 1500);
     };
     card.appendChild(im);
     card.appendChild(info);
@@ -129,6 +139,11 @@
     e.preventDefault();
     dropEl.classList.remove("over");
     for (var i = 0; i < e.dataTransfer.files.length; i++) process(e.dataTransfer.files[i]);
+  };
+  document.getElementById("fmtSel").onchange = function(){
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].ta) items[i].ta.value = fmtText(items[i].dataUrl);
+    }
   };
   document.getElementById("sizeInput").oninput = function(){
     document.getElementById("sizeVal").textContent = this.value;
